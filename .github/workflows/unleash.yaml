@@ -1,0 +1,27 @@
+name: Deploy Unleash API Tokens
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - nais/unleash/**
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      matrix:
+        cluster: [dev, prod]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+      - name: Deploy Unleash API Token for ${{ matrix.cluster }}
+        uses: nais/deploy/actions/deploy@v2
+        env:
+          CLUSTER: ${{ matrix.cluster }}-gcp
+          RESOURCE: nais/unleash/${{ matrix.cluster }}.yaml
