@@ -34,6 +34,10 @@ spec:
         - host: klage-unleash-api.nav.cloud.nais.io
   envFrom:
     - secret: klage-unleash-proxy-unleash-api-token
+  observability:
+    autoInstrumentation:
+      enabled: true
+      runtime: sdk
   resources:
     limits:
       memory: 32Mi
