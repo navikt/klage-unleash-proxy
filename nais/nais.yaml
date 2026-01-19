@@ -1,0 +1,42 @@
+apiVersion: "nais.io/v1alpha1"
+kind: "Application"
+metadata:
+  name: klage-unleash-proxy
+  namespace: klage
+  labels:
+    team: klage
+spec:
+  tokenx:
+    enabled: true
+  image: {{ image }}
+  port: 8080
+  startup:
+    path: /isAlive
+    initialDelay: 3
+    failureThreshold: 5
+    periodSeconds: 1
+    timeout: 2
+  readiness:
+    path: /isReady
+  liveness:
+    path: /isAlive
+  replicas:
+    min: 2
+    max: 3
+  accessPolicy:
+    inbound:
+      rules:
+        - application: kabal-api
+        - application: kabal-frontend
+        - application: kabal-document
+    outbound:
+      external:
+        - host: klage-unleash-api.nav.cloud.nais.io
+  envFrom:
+    - secret: klage-unleash-proxy-unleash-api-token
+  resources:
+    limits:
+      memory: 32Mi
+    requests:
+      cpu: 1m
+      memory: 8Mi
