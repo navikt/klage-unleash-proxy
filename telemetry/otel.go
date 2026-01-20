@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"time"
 
+	"google.golang.org/grpc"
+
 	"github.com/navikt/klage-unleash-proxy/env"
 
 	"go.opentelemetry.io/otel"
@@ -115,9 +117,19 @@ func Initialize(ctx context.Context, cfg Config) (*Telemetry, error) {
 
 	telemetry := &Telemetry{}
 
-	// Set up trace exporter
+	// Set up trace exporter with retry logic
 	traceExporter, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithInsecure(),
+		otlptracegrpc.WithTimeout(10*time.Second),
+		otlptracegrpc.WithRetry(otlptracegrpc.RetryConfig{
+			Enabled:         true,
+			InitialInterval: 1 * time.Second,
+			MaxInterval:     5 * time.Second,
+			MaxElapsedTime:  30 * time.Second,
+		}),
+		otlptracegrpc.WithDialOption(grpc.WithDefaultCallOptions(
+			grpc.MaxCallSendMsgSize(4*1024*1024), // 4MB max message size
+		)),
 	)
 	if err != nil {
 		return nil, err
@@ -141,9 +153,19 @@ func Initialize(ctx context.Context, cfg Config) (*Telemetry, error) {
 		propagation.Baggage{},
 	))
 
-	// Set up metrics exporter
+	// Set up metrics exporter with retry logic
 	metricExporter, err := otlpmetricgrpc.New(ctx,
 		otlpmetricgrpc.WithInsecure(),
+		otlpmetricgrpc.WithTimeout(10*time.Second),
+		otlpmetricgrpc.WithRetry(otlpmetricgrpc.RetryConfig{
+			Enabled:         true,
+			InitialInterval: 1 * time.Second,
+			MaxInterval:     5 * time.Second,
+			MaxElapsedTime:  30 * time.Second,
+		}),
+		otlpmetricgrpc.WithDialOption(grpc.WithDefaultCallOptions(
+			grpc.MaxCallSendMsgSize(4*1024*1024), // 4MB max message size
+		)),
 	)
 	if err != nil {
 		return telemetry, err
