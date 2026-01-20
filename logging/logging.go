@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,9 +14,35 @@ import (
 func Initialize() *slog.Logger {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.MessageKey {
+				a.Key = "message"
+			}
+			return a
+		},
 	}))
 	slog.SetDefault(logger)
 	return logger
+}
+
+// FromContext returns a logger with trace_id and span_id attributes if available in the context.
+// Use this when logging from handlers to correlate logs with traces.
+func FromContext(ctx context.Context) *slog.Logger {
+	spanCtx := trace.SpanContextFromContext(ctx)
+
+	if !spanCtx.HasTraceID() && !spanCtx.HasSpanID() {
+		return slog.Default()
+	}
+
+	var attrs []any
+	if spanCtx.HasTraceID() {
+		attrs = append(attrs, slog.String("trace_id", spanCtx.TraceID().String()))
+	}
+	if spanCtx.HasSpanID() {
+		attrs = append(attrs, slog.String("span_id", spanCtx.SpanID().String()))
+	}
+
+	return slog.Default().With(attrs...)
 }
 
 // responseWriter wraps http.ResponseWriter to capture the status code

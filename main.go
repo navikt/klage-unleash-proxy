@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -9,45 +10,49 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Unleash/unleash-go-sdk/v5"
+	"github.com/navikt/klage-unleash-proxy/clients"
 	"github.com/navikt/klage-unleash-proxy/env"
 	"github.com/navikt/klage-unleash-proxy/feature"
 	"github.com/navikt/klage-unleash-proxy/logging"
+	"github.com/navikt/klage-unleash-proxy/nais"
 	"github.com/navikt/klage-unleash-proxy/telemetry"
 )
 
-var URL = env.UnleashServerAPIURL + "/api"
+var okBytes = []byte("OK")
 
 func init() {
 	// Initialize JSON logger
 	logging.Initialize()
-
-	slog.Info("Initializing Unleash client",
-		slog.String("appName", env.NaisAppName),
-		slog.String("url", URL),
-		slog.String("environment", env.UnleashServerAPIEnv),
-		slog.Bool("hasApiKey", env.UnleashServerAPIToken != ""),
-	)
-
-	unleash.Initialize(
-		unleash.WithListener(logging.NewSlogListener()),
-		unleash.WithAppName(env.NaisAppName),
-		unleash.WithUrl(URL),
-		unleash.WithCustomHeaders(http.Header{"Authorization": {env.UnleashServerAPIToken}}),
-	)
-
-	// Blocks until the default client is ready
-	unleash.WaitForReady()
-
-	slog.Info("Unleash client ready")
 }
 
-var okBytes = []byte("OK")
-
-func healthHandler(w http.ResponseWriter, r *http.Request) {
+func livenessHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	w.Write(okBytes)
+}
+
+func readinessHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+
+	if !clients.Ready() {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("NOT READY"))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(okBytes)
+}
+
+func initializeClients() {
+	if err := clients.Initialize(); err != nil {
+		slog.Error("Failed to initialize Unleash clients",
+			slog.String("error", err.Error()),
+		)
+		os.Exit(1)
+	}
+
+	slog.Info(fmt.Sprintf("All %d Unleash clients ready", len(nais.InboundApps)))
 }
 
 func main() {
@@ -58,7 +63,7 @@ func main() {
 	otelConfig := telemetry.ConfigFromEnv()
 	otelInstance, err := telemetry.Initialize(ctx, otelConfig)
 	if err != nil {
-		slog.Error("Failed to initialize OpenTelemetry",
+		slog.Error("Failed to initialize OpenTelemetry: "+err.Error(),
 			slog.String("error", err.Error()),
 		)
 		// Continue without telemetry rather than failing
@@ -70,17 +75,17 @@ func main() {
 	// Create OpenTelemetry middleware
 	otelMiddleware, err := telemetry.NewMiddleware(otelInstance != nil)
 	if err != nil {
-		slog.Error("Failed to create OpenTelemetry middleware",
+		slog.Error("Failed to create OpenTelemetry middleware: "+err.Error(),
 			slog.String("error", err.Error()),
 		)
 	}
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/isAlive", healthHandler)
-	mux.HandleFunc("/isReady", healthHandler)
+	mux.HandleFunc("/isAlive", livenessHandler)
+	mux.HandleFunc("/isReady", readinessHandler)
 
-	mux.HandleFunc("/features/", feature.Handler)
+	mux.HandleFunc(feature.PathPrefix, feature.Handler)
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
@@ -92,16 +97,36 @@ func main() {
 	}
 
 	// Build the handler chain
+	// Order matters: OTel middleware must run first (outermost) to create the trace context,
+	// then logging middleware can access the trace ID from the context
 	var handler http.Handler = mux
+	handler = logging.Middleware(handler)
 	if otelMiddleware != nil {
 		handler = otelMiddleware.Handler(handler)
 	}
-	handler = logging.Middleware(handler)
 
 	server := &http.Server{
 		Addr:    ":" + port,
 		Handler: handler,
 	}
+
+	// Start server in a goroutine so we can initialize clients while serving health checks
+	go func() {
+		slog.Info("Starting server",
+			slog.String("port", port),
+			slog.Bool("otel_enabled", otelInstance != nil),
+		)
+
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("Server failed",
+				slog.String("error", err.Error()),
+			)
+			os.Exit(1)
+		}
+	}()
+
+	// Initialize Unleash clients after server is started
+	initializeClients()
 
 	// Handle graceful shutdown
 	signalChannel := make(chan os.Signal, 1)
@@ -122,6 +147,9 @@ func main() {
 			)
 		}
 
+		// Close all Unleash clients
+		clients.Close()
+
 		// Shutdown OpenTelemetry
 		if otelInstance != nil {
 			if err := otelInstance.Shutdown(shutdownCtx); err != nil {
@@ -134,17 +162,8 @@ func main() {
 		cancel()
 	}()
 
-	slog.Info("Starting server",
-		slog.String("port", port),
-		slog.Bool("otel_enabled", otelInstance != nil),
-	)
-
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		slog.Error("Server failed",
-			slog.String("error", err.Error()),
-		)
-		os.Exit(1)
-	}
+	// Wait for shutdown signal
+	<-ctx.Done()
 
 	slog.Info("Server shutdown complete")
 }

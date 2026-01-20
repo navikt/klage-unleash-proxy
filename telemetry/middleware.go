@@ -8,7 +8,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -90,12 +89,12 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		ctx, span := m.tracer.Start(ctx, r.Method+" "+r.URL.Path,
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(
-				semconv.HTTPRequestMethodKey.String(r.Method),
-				semconv.URLPath(r.URL.Path),
-				semconv.URLScheme(scheme(r)),
-				semconv.ServerAddress(r.Host),
-				semconv.UserAgentOriginal(r.UserAgent()),
-				semconv.ClientAddress(r.RemoteAddr),
+				HTTPRequestMethodKey.String(r.Method),
+				URLPath(r.URL.Path),
+				URLScheme(scheme(r)),
+				ServerAddress(r.Host),
+				UserAgentOriginal(r.UserAgent()),
+				ClientAddress(r.RemoteAddr),
 			),
 		)
 		defer span.End()
@@ -110,16 +109,16 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		next.ServeHTTP(wrapped, r.WithContext(ctx))
 
 		// Record the status code in the span
-		span.SetAttributes(semconv.HTTPResponseStatusCode(wrapped.statusCode))
+		span.SetAttributes(HTTPResponseStatusCode(wrapped.statusCode))
 
 		// Calculate duration
 		duration := time.Since(start).Seconds()
 
 		// Common attributes for metrics
 		attrs := []attribute.KeyValue{
-			semconv.HTTPRequestMethodKey.String(r.Method),
-			semconv.HTTPRoute(r.URL.Path),
-			semconv.HTTPResponseStatusCode(wrapped.statusCode),
+			HTTPRequestMethodKey.String(r.Method),
+			HTTPRoute(r.URL.Path),
+			HTTPResponseStatusCode(wrapped.statusCode),
 		}
 
 		// Record metrics

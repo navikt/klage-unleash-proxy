@@ -47,10 +47,10 @@ func (l *SlogListener) OnSent(payload unleash.MetricsData) {
 
 // OnRegistered is called when the client is registered with the Unleash server
 func (l *SlogListener) OnRegistered(payload unleash.ClientData) {
-	slog.Info("Unleash client registered",
-		slog.String("appName", payload.AppName),
-		slog.String("instanceId", payload.InstanceID),
-		slog.String("sdkVersion", payload.SDKVersion),
+	slog.Info("Unleash client registered for "+payload.AppName,
+		slog.String("app_name", payload.AppName),
+		slog.String("instance_id", payload.InstanceID),
+		slog.String("sdk_version", payload.SDKVersion),
 		slog.Any("strategies", payload.Strategies),
 		slog.Time("started", payload.Started),
 		slog.Int64("interval", payload.Interval),

@@ -14,7 +14,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
 // Config holds the OpenTelemetry configuration
@@ -100,13 +99,14 @@ func Initialize(ctx context.Context, cfg Config) (*Telemetry, error) {
 	)
 
 	// Create resource with service information
-	res, err := resource.Merge(
-		resource.Default(),
-		resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceName(cfg.ServiceName),
-			semconv.ServiceVersion(cfg.ServiceVersion),
-			semconv.DeploymentEnvironment(cfg.Environment),
+	// Using resource.New with WithSchemaURL avoids schema URL conflicts
+	// that occur when merging resources with different semconv versions
+	res, err := resource.New(ctx,
+		resource.WithSchemaURL(SchemaURL),
+		resource.WithAttributes(
+			ServiceName(cfg.ServiceName),
+			ServiceVersion(cfg.ServiceVersion),
+			DeploymentEnvironment(cfg.Environment),
 		),
 	)
 	if err != nil {
