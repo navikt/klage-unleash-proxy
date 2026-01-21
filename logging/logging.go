@@ -2,6 +2,7 @@ package logging
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -106,6 +107,6 @@ func Middleware(next http.Handler) http.Handler {
 			logAttrs = append(logAttrs, slog.String("span_id", spanCtx.SpanID().String()))
 		}
 
-		slog.Info("Request completed", logAttrs...)
+		slog.Info(fmt.Sprintf("%s %s - %d %s (%dms)", r.Method, r.URL.Path, wrapped.statusCode, http.StatusText(wrapped.statusCode), duration.Milliseconds()), logAttrs...)
 	})
 }
