@@ -1,12 +1,17 @@
 package env
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 // NAIS environment variables
 var NaisAppName = os.Getenv("NAIS_APP_NAME")
 var NaisClusterName = os.Getenv("NAIS_CLUSTER_NAME")
 var NaisNamespace = os.Getenv("NAIS_NAMESPACE")
 var NaisPodName = os.Getenv("NAIS_POD_NAME")
+var NaisAppImage = os.Getenv("NAIS_APP_IMAGE")
+var _, AppVersion, _ = strings.Cut(NaisAppImage, ":")
 
 // Unleash environment variables
 var UnleashServerAPIURL = os.Getenv("UNLEASH_SERVER_API_URL")

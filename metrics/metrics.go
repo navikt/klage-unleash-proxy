@@ -13,6 +13,7 @@ import (
 var (
 	defaultLabels = prometheus.Labels{
 		"app":       env.NaisAppName,
+		"version":   env.AppVersion,
 		"namespace": env.NaisNamespace,
 		"pod_name":  env.NaisPodName,
 	}

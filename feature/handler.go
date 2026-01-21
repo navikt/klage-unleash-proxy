@@ -25,6 +25,8 @@ var PathPrefix = "/features/"
 
 var tracer trace.Tracer
 
+var serverHeader = env.NaisAppName + "/" + env.AppVersion
+
 // InitTracer initializes the tracer after OpenTelemetry setup.
 // Call this after telemetry.Initialize() to ensure proper tracing.
 func InitTracer() {
@@ -63,6 +65,10 @@ func IsValidName(name string) bool {
 // It expects requests to POST or QUERY /features/{featureName} with a JSON body.
 func Handler(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
+
+	// Add version headers to all responses
+	w.Header().Set("Server", serverHeader)
+	w.Header().Set("App-Version", env.AppVersion)
 
 	ctx := r.Context()
 

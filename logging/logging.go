@@ -7,12 +7,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/navikt/klage-unleash-proxy/env"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // Initialize sets up the default JSON logger
 func Initialize() *slog.Logger {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			if a.Key == slog.MessageKey {
@@ -20,8 +21,14 @@ func Initialize() *slog.Logger {
 			}
 			return a
 		},
-	}))
+	})
+
+	logger := slog.New(handler).With(
+		slog.String("app_version", env.AppVersion),
+	)
+
 	slog.SetDefault(logger)
+
 	return logger
 }
 
