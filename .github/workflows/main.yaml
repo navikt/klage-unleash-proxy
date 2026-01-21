@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - "*.md"
+      - "LICENSE"
+      - "CODEOWNERS"
+      - ".gitignore"
+      - ".zed/**"
 
 jobs:
   build:
