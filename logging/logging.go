@@ -58,7 +58,7 @@ func (rw *responseWriter) WriteHeader(code int) {
 
 // shouldSkipLogging returns true for health check endpoints that should not be logged
 func shouldSkipLogging(path string) bool {
-	return path == "/isAlive" || path == "/isReady"
+	return path == "/isAlive" || path == "/isReady" || path == "/metrics"
 }
 
 // Middleware returns an HTTP middleware that logs each request with timing information

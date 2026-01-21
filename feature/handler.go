@@ -13,6 +13,7 @@ import (
 	"github.com/navikt/klage-unleash-proxy/clients"
 	"github.com/navikt/klage-unleash-proxy/env"
 	"github.com/navikt/klage-unleash-proxy/logging"
+	"github.com/navikt/klage-unleash-proxy/metrics"
 	"github.com/navikt/klage-unleash-proxy/nais"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -83,6 +84,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			"method", r.Method,
 			"path", r.URL.Path,
 		)
+		metrics.RecordFeatureError("method_not_allowed")
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -96,6 +98,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			"method", r.Method,
 			"path", r.URL.Path,
 		)
+		metrics.RecordFeatureError("missing_feature_name")
 		http.Error(w, "Feature name is required", http.StatusBadRequest)
 		return
 	}
@@ -111,6 +114,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			"path", r.URL.Path,
 			"feature", featureName,
 		)
+		metrics.RecordFeatureError("invalid_feature_name")
 		http.Error(w, "Invalid feature name: must be URL-friendly, 1-100 characters, and not '.' or '..'", http.StatusBadRequest)
 		return
 	}
@@ -126,6 +130,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			"feature", featureName,
 			"error", err.Error(),
 		)
+		metrics.RecordFeatureError("invalid_json_body")
 		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
 		return
 	}
@@ -144,6 +149,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			"path", r.URL.Path,
 			"feature", featureName,
 		)
+		metrics.RecordFeatureError("missing_app_name")
 		http.Error(w, fmt.Sprintf("app_name is required in request body, must be one of the allowed inbound applications: %s", strings.Join(nais.InboundApps, ", ")), http.StatusBadRequest)
 		return
 	}
@@ -159,6 +165,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			"feature", featureName,
 			"app_name", req.AppName,
 		)
+		metrics.RecordFeatureError("unknown_app_name")
 		http.Error(w, fmt.Sprintf("Unknown app_name: must be one of the allowed inbound applications: %s", strings.Join(nais.InboundApps, ", ")), http.StatusBadRequest)
 		return
 	}
@@ -189,13 +196,17 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 
 	span.SetAttributes(attribute.Bool("feature.enabled", enabled))
 
+	// Record Prometheus metrics
+	duration := time.Since(startTime)
+	metrics.RecordFeatureRequest(featureName, req.AppName, enabled, duration)
+
 	log.Debug(fmt.Sprintf("Feature check for %s - %s = %t", req.AppName, featureName, enabled),
 		"feature", featureName,
 		"enabled", enabled,
 		"user_id", req.NavIdent,
 		"app_name", req.AppName,
 		"pod_name", req.PodName,
-		"duration", time.Since(startTime).Milliseconds(),
+		"duration", duration.Milliseconds(),
 	)
 
 	w.Header().Set("Content-Type", "application/json")

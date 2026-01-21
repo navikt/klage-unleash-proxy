@@ -5,6 +5,8 @@ import "os"
 // NAIS environment variables
 var NaisAppName = os.Getenv("NAIS_APP_NAME")
 var NaisClusterName = os.Getenv("NAIS_CLUSTER_NAME")
+var NaisNamespace = os.Getenv("NAIS_NAMESPACE")
+var NaisPodName = os.Getenv("NAIS_POD_NAME")
 
 // Unleash environment variables
 var UnleashServerAPIURL = os.Getenv("UNLEASH_SERVER_API_URL")

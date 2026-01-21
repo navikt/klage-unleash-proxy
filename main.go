@@ -10,10 +10,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/navikt/klage-unleash-proxy/clients"
 	"github.com/navikt/klage-unleash-proxy/env"
 	"github.com/navikt/klage-unleash-proxy/feature"
 	"github.com/navikt/klage-unleash-proxy/logging"
+	_ "github.com/navikt/klage-unleash-proxy/metrics" // Register Prometheus metrics
 	"github.com/navikt/klage-unleash-proxy/nais"
 	"github.com/navikt/klage-unleash-proxy/telemetry"
 )
@@ -84,6 +87,8 @@ func main() {
 
 	mux.HandleFunc("/isAlive", livenessHandler)
 	mux.HandleFunc("/isReady", readinessHandler)
+
+	mux.Handle("/metrics", promhttp.Handler())
 
 	mux.HandleFunc(feature.PathPrefix, feature.Handler)
 
