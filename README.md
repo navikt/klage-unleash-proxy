@@ -45,6 +45,13 @@ Content-Type: application/json
 }
 ```
 
+**Response Headers:**
+
+| Header | Description |
+|--------|-------------|
+| `Server` | Application name and version (e.g., `klage-unleash-proxy/2026.01.20-15.33-72e1136`) |
+| `App-Version` | Application version extracted from the container image tag (e.g., `2026.01.20-15.33-72e1136`) |
+
 **Status Codes:**
 
 - `200 OK`: Feature flag status returned
@@ -55,6 +62,20 @@ Content-Type: application/json
 
 - `GET /isAlive` - Liveness probe (always returns 200 when server is running)
 - `GET /isReady` - Readiness probe (returns 200 when all Unleash clients are initialized)
+
+### Metrics Endpoint
+
+- `GET /metrics` - Prometheus metrics endpoint
+
+**Available Metrics:**
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `feature_requests_total` | Counter | `feature`, `app_name`, `enabled` | Total number of feature check requests |
+| `feature_request_duration_seconds` | Histogram | `feature`, `app_name` | Duration of feature check requests |
+| `feature_request_errors_total` | Counter | `error_type` | Total number of errors during feature checks |
+
+All metrics include default labels: `app`, `version`, `namespace`, `pod_name`.
 
 ## Configuration
 
@@ -68,6 +89,9 @@ The service is configured via environment variables:
 | `PORT` | Server port (default: `8080`) |
 | `NAIS_APP_NAME` | Application name (set by NAIS) |
 | `NAIS_CLUSTER_NAME` | Cluster name (set by NAIS) |
+| `NAIS_NAMESPACE` | Namespace (set by NAIS) |
+| `NAIS_POD_NAME` | Pod name (set by NAIS) |
+| `NAIS_APP_IMAGE` | Container image with tag, used to extract app version (set by NAIS) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry collector endpoint |
 
 ## Development
