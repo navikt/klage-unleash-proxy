@@ -2,6 +2,7 @@ package logging
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/Unleash/unleash-go-sdk/v5"
 )
@@ -13,9 +14,21 @@ type SlogListener struct {
 
 // OnError is called when an error occurs in the Unleash client
 func (l *SlogListener) OnError(err error) {
+	errMsg := err.Error()
+
+	// Treat retry/backoff errors as warnings since they are transient
+	// The SDK uses these phrases when backing off due to 429 or 5xx errors
+	if strings.Contains(errMsg, "backing off") {
+		slog.Warn("Unleash request retry for "+l.appName,
+			slog.String("app_name", l.appName),
+			slog.String("warning", errMsg),
+		)
+		return
+	}
+
 	slog.Error("Unleash error for "+l.appName,
 		slog.String("app_name", l.appName),
-		slog.String("error", err.Error()),
+		slog.String("error", errMsg),
 	)
 }
 
