@@ -43,7 +43,7 @@ spec:
     path: /metrics
   resources:
     limits:
-      memory: 32Mi
+      memory: 128Mi
     requests:
       cpu: 1m
-      memory: 8Mi
+      memory: 32Mi
