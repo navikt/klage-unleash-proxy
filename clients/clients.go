@@ -53,7 +53,7 @@ func Initialize() error {
 			)
 
 			client, err := unleash.NewClient(
-				unleash.WithListener(logging.NewSlogListener()),
+				unleash.WithListener(logging.NewSlogListener(app)),
 				unleash.WithAppName(app),
 				unleash.WithUrl(url),
 				unleash.WithCustomHeaders(http.Header{"Authorization": {env.UnleashServerAPIToken}}),
