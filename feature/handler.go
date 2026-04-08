@@ -1,25 +1,19 @@
 package feature
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
-	"time"
 
-	"github.com/Unleash/unleash-go-sdk/v5"
-	unleashcontext "github.com/Unleash/unleash-go-sdk/v5/context"
-	"github.com/navikt/klage-unleash-proxy/clients"
 	"github.com/navikt/klage-unleash-proxy/env"
 	"github.com/navikt/klage-unleash-proxy/logging"
 	"github.com/navikt/klage-unleash-proxy/metrics"
-	"github.com/navikt/klage-unleash-proxy/nais"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
+
+const sseAcceptHeader = "text/event-stream"
 
 var PathPrefix = "/features/"
 
@@ -45,27 +39,12 @@ type Response struct {
 	Enabled bool `json:"enabled"`
 }
 
-// IsValidName validates the feature name according to Unleash rules:
-// - Must be URL-friendly (encodeURIComponent(name) === name)
-// - Cannot be "." or ".."
-// - Must be between 1 and 100 characters
-func IsValidName(name string) bool {
-	if len(name) < 1 || len(name) > 100 {
-		return false
-	}
-	if name == "." || name == ".." {
-		return false
-	}
-	// Check if URL-friendly: encoded version should equal the original
-	encoded := url.PathEscape(name)
-	return encoded == name
-}
-
-// Handler handles feature check requests.
-// It expects requests to POST or QUERY /features/{featureName} with a JSON body.
+// Handler handles feature check requests via POST or QUERY.
+//
+// It supports two modes, distinguished by the Accept header:
+//   - text/event-stream: opens an SSE stream that pushes toggle changes.
+//   - All other values: returns a single JSON feature check response.
 func Handler(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
-
 	// Add version headers to all responses
 	w.Header().Set("Server", serverHeader)
 	w.Header().Set("App-Version", env.AppVersion)
@@ -95,127 +74,12 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract feature name from path
-	featureName := strings.TrimPrefix(r.URL.Path, PathPrefix)
-	if featureName == "" {
-		span.SetStatus(codes.Error, "missing feature name")
-		span.SetAttributes(attribute.String("error.type", "missing_feature"))
-		log.Warn("Missing feature name",
-			"method", r.Method,
-			"path", r.URL.Path,
-		)
-		metrics.RecordFeatureError("missing_feature_name")
-		http.Error(w, "Feature name is required", http.StatusBadRequest)
+	// SSE subscription: Accept: text/event-stream
+	if strings.Contains(r.Header.Get("Accept"), sseAcceptHeader) {
+		handleSSE(w, r, ctx, span, log)
 		return
 	}
 
-	span.SetAttributes(attribute.String("feature.name", featureName))
-
-	// Validate feature name according to Unleash rules
-	if !IsValidName(featureName) {
-		span.SetStatus(codes.Error, "invalid feature name")
-		span.SetAttributes(attribute.String("error.type", "invalid_feature"))
-		log.Warn("Invalid feature name",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"feature", featureName,
-		)
-		metrics.RecordFeatureError("invalid_feature_name")
-		http.Error(w, "Invalid feature name: must be URL-friendly, 1-100 characters, and not '.' or '..'", http.StatusBadRequest)
-		return
-	}
-
-	// Parse JSON body
-	var req Request
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		span.SetStatus(codes.Error, "invalid JSON body")
-		span.RecordError(err)
-		log.Warn("Invalid JSON body",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"feature", featureName,
-			"error", err.Error(),
-		)
-		metrics.RecordFeatureError("invalid_json_body")
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
-		return
-	}
-
-	span.SetAttributes(
-		attribute.String("request.app_name", req.AppName),
-		attribute.String("request.pod_name", req.PodName),
-	)
-
-	// Validate app_name is provided
-	if req.AppName == "" {
-		span.SetStatus(codes.Error, "missing app_name")
-		span.SetAttributes(attribute.String("error.type", "missing_app_name"))
-		log.Warn("Missing app_name in request body",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"feature", featureName,
-		)
-		metrics.RecordFeatureError("missing_app_name")
-		http.Error(w, fmt.Sprintf("app_name is required in request body, must be one of the allowed inbound applications: %s", strings.Join(nais.InboundApps, ", ")), http.StatusBadRequest)
-		return
-	}
-
-	// Get the Unleash client for the specified app
-	client, ok := clients.Get(req.AppName)
-	if !ok {
-		span.SetStatus(codes.Error, "unknown app_name")
-		span.SetAttributes(attribute.String("error.type", "unknown_app_name"))
-		log.Warn("Unknown app_name: "+req.AppName,
-			"method", r.Method,
-			"path", r.URL.Path,
-			"feature", featureName,
-			"app_name", req.AppName,
-		)
-		metrics.RecordFeatureError("unknown_app_name")
-		http.Error(w, fmt.Sprintf("Unknown app_name: must be one of the allowed inbound applications: %s", strings.Join(nais.InboundApps, ", ")), http.StatusBadRequest)
-		return
-	}
-
-	// CurrentTime is defaulted to now.
-	unleashCtx := unleashcontext.Context{
-		Environment:   env.UnleashServerAPIEnv,
-		UserId:        req.NavIdent,
-		AppName:       req.AppName,
-		RemoteAddress: r.RemoteAddr,
-		Properties: map[string]string{
-			"podName": req.PodName,
-		},
-	}
-
-	// Create a child span for the Unleash check
-	_, unleashSpan := tracer.Start(ctx, "unleash.IsEnabled",
-		trace.WithAttributes(
-			attribute.String("feature.name", featureName),
-			attribute.String("user_id", req.NavIdent),
-			attribute.String("app_name", req.AppName),
-			attribute.String("pod_name", req.PodName),
-		),
-	)
-	enabled := client.IsEnabled(featureName, unleash.WithContext(unleashCtx))
-	unleashSpan.SetAttributes(attribute.Bool("feature.enabled", enabled))
-	unleashSpan.End()
-
-	span.SetAttributes(attribute.Bool("feature.enabled", enabled))
-
-	// Record Prometheus metrics
-	duration := time.Since(startTime)
-	metrics.RecordFeatureRequest(featureName, req.AppName, enabled, duration)
-
-	log.Debug(fmt.Sprintf("Feature check for %s - %s = %t", req.AppName, featureName, enabled),
-		"feature", featureName,
-		"enabled", enabled,
-		"user_id", req.NavIdent,
-		"app_name", req.AppName,
-		"pod_name", req.PodName,
-		"duration", duration.Milliseconds(),
-	)
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(Response{Enabled: enabled})
+	// REST: single feature check
+	handleREST(w, r, ctx, span, log)
 }

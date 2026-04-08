@@ -53,7 +53,7 @@ func FromContext(ctx context.Context) *slog.Logger {
 	return slog.Default().With(attrs...)
 }
 
-// responseWriter wraps http.ResponseWriter to capture the status code
+// responseWriter wraps http.ResponseWriter to capture the status code.
 type responseWriter struct {
 	http.ResponseWriter
 	statusCode int
@@ -62,6 +62,12 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+// Unwrap returns the underlying ResponseWriter so http.ResponseController
+// can discover optional interfaces like http.Flusher.
+func (rw *responseWriter) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
 }
 
 // shouldSkipLogging returns true for health check endpoints that should not be logged

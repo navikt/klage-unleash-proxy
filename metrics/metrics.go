@@ -52,6 +52,34 @@ var (
 		},
 		[]string{"error_type"},
 	)
+
+	// SSEActiveConnections tracks the number of currently active SSE connections
+	SSEActiveConnections = factory.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "sse_active_connections",
+			Help: "Number of currently active SSE connections",
+		},
+		[]string{"feature", "app_name"},
+	)
+
+	// SSEEventsSentTotal counts the total number of SSE events sent
+	SSEEventsSentTotal = factory.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "sse_events_sent_total",
+			Help: "Total number of SSE events sent to clients",
+		},
+		[]string{"feature", "app_name", "enabled"},
+	)
+
+	// SSEConnectionDuration tracks how long SSE connections stay open
+	SSEConnectionDuration = factory.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "sse_connection_duration_seconds",
+			Help:    "Duration of SSE connections in seconds",
+			Buckets: []float64{1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600},
+		},
+		[]string{"feature", "app_name"},
+	)
 )
 
 // RecordFeatureRequest records metrics for a successful feature check
@@ -63,4 +91,20 @@ func RecordFeatureRequest(feature, appName string, enabled bool, duration time.D
 // RecordFeatureError records an error during feature check
 func RecordFeatureError(errorType string) {
 	FeatureRequestErrors.WithLabelValues(errorType).Inc()
+}
+
+// RecordSSEConnection increments the active SSE connection gauge for a feature/app pair
+func RecordSSEConnection(feature, appName string) {
+	SSEActiveConnections.WithLabelValues(feature, appName).Inc()
+}
+
+// RecordSSEDisconnection decrements the active SSE connection gauge and records connection duration
+func RecordSSEDisconnection(feature, appName string, duration time.Duration) {
+	SSEActiveConnections.WithLabelValues(feature, appName).Dec()
+	SSEConnectionDuration.WithLabelValues(feature, appName).Observe(duration.Seconds())
+}
+
+// RecordSSEEvent records an SSE event sent to a client
+func RecordSSEEvent(feature, appName string, enabled bool) {
+	SSEEventsSentTotal.WithLabelValues(feature, appName, strconv.FormatBool(enabled)).Inc()
 }
