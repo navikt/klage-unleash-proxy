@@ -2,6 +2,8 @@ package telemetry
 
 import (
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -15,7 +17,33 @@ const (
 	instrumentationName = "github.com/navikt/klage-unleash-proxy/telemetry"
 )
 
-// responseWriter wraps http.ResponseWriter to capture the status code
+var traceparentPattern = regexp.MustCompile(`^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$`)
+
+// traceparentValidator validates traceparent values against the W3C Trace Context spec,
+// rejecting version ff, all-zero trace-id, and all-zero parent-id.
+type traceparentValidator struct{}
+
+func (traceparentValidator) MatchString(value string) bool {
+	if !traceparentPattern.MatchString(value) {
+		return false
+	}
+	if value[0:2] == "ff" {
+		return false
+	}
+	traceID, err := trace.TraceIDFromHex(value[3:35])
+	if err != nil || !traceID.IsValid() {
+		return false
+	}
+	parentID, err := trace.SpanIDFromHex(value[36:52])
+	if err != nil || !parentID.IsValid() {
+		return false
+	}
+	return true
+}
+
+var validTraceparent = traceparentValidator{}
+
+// responseWriter wraps http.ResponseWriter to capture the status code.
 type responseWriter struct {
 	http.ResponseWriter
 	statusCode int
@@ -24,6 +52,12 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+// Unwrap returns the underlying ResponseWriter so http.ResponseController
+// can discover optional interfaces like http.Flusher.
+func (rw *responseWriter) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
 }
 
 // Middleware provides OpenTelemetry instrumentation for HTTP handlers
@@ -81,6 +115,13 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+
+		// Support traceparent as a query parameter for SSE clients that cannot set headers (e.g. EventSource).
+		if r.Header.Get("Traceparent") == "" && strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
+			if tp := r.URL.Query().Get("traceparent"); tp != "" && validTraceparent.MatchString(tp) {
+				r.Header.Set("Traceparent", tp)
+			}
+		}
 
 		// Extract trace context from incoming request
 		ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
