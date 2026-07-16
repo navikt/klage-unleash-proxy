@@ -31,6 +31,7 @@ spec:
         - application: kabal-document
         - application: klage-dittnav
         - application: kabin
+        - application: kabin-api
     outbound:
       external:
         - host: klage-unleash-api.nav.cloud.nais.io
