@@ -1,6 +1,6 @@
 module github.com/navikt/klage-unleash-proxy
 
-go 1.26.4
+go 1.26.6
 
 require (
 	github.com/Unleash/unleash-go-sdk/v5 v5.1.0
