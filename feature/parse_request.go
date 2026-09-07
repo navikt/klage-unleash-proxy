@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Unleash/unleash-go-sdk/v5"
-	unleashcontext "github.com/Unleash/unleash-go-sdk/v5/context"
+	"github.com/Unleash/unleash-go-sdk/v6"
+	unleashcontext "github.com/Unleash/unleash-go-sdk/v6/context"
 	"github.com/navikt/klage-unleash-proxy/clients"
 	"github.com/navikt/klage-unleash-proxy/env"
 	"github.com/navikt/klage-unleash-proxy/metrics"

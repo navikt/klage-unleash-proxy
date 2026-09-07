@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Unleash/unleash-go-sdk/v5"
+	"github.com/Unleash/unleash-go-sdk/v6"
 	"github.com/navikt/klage-unleash-proxy/metrics"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -131,7 +131,7 @@ func handleSSE(w http.ResponseWriter, r *http.Request, ctx context.Context, span
 	// when it differs from the last known value. Returns false when the
 	// connection should be closed (write error or marshal failure).
 	sendIfChanged := func() bool {
-		enabled := parsed.client.IsEnabled(featureName, unleash.WithContext(parsed.unleashCtx))
+		enabled := parsed.client.IsEnabled(featureName, unleash.FeatureOptions{Ctx: parsed.unleashCtx})
 
 		if lastEnabled != nil && *lastEnabled == enabled {
 			return true // no change, keep going
