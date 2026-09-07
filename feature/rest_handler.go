@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Unleash/unleash-go-sdk/v5"
+	"github.com/Unleash/unleash-go-sdk/v6"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -33,7 +33,7 @@ func handleREST(w http.ResponseWriter, r *http.Request, ctx context.Context, spa
 			attribute.String("pod_name", fr.req.PodName),
 		),
 	)
-	enabled := fr.client.IsEnabled(fr.featureName, unleash.WithContext(fr.unleashCtx))
+	enabled := fr.client.IsEnabled(fr.featureName, unleash.FeatureOptions{Ctx: fr.unleashCtx})
 	unleashSpan.SetAttributes(attribute.Bool("feature.enabled", enabled))
 	unleashSpan.End()
 
